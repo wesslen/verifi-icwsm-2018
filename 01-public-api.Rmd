@@ -1,0 +1,104 @@
+---
+title: "01-public-api"
+author: "Ryan Wesslen"
+date: "April 3, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Public API
+
+```{r data, eval=FALSE}
+library(ROAuth); library(streamR)
+requestURL <- "https://api.twitter.com/oauth/request_token"
+accessURL <- "https://api.twitter.com/oauth/access_token"
+authURL <- "https://api.twitter.com/oauth/authorize"
+consumerKey <- "xxx"
+consumerSecret <- "yyy"
+
+my_oauth <- OAuthFactory$new(consumerKey=consumerKey,
+                             consumerSecret=consumerSecret, requestURL=requestURL,
+                             accessURL=accessURL, authURL=authURL)
+
+## run this line and go to the URL that appears on screen
+my_oauth$handshake(cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl"))
+```
+
+### Import ID
+
+```{r api, eval=FALSE}
+library(tidyverse)
+
+userlevel <- read_csv("./data/user-stats.csv") %>%
+  filter(userlevel, Valid == "Yes") # Valid based on qualitative analysis
+
+#save profile ids
+ids <- userlevel$id
+
+endDate <- "2017-06-07 00:00:00 EDT"
+
+while(Sys.time() < endDate){
+    time <- gsub("[: -]", "" , Sys.time(), perl=TRUE)
+    file <- paste0("./data/stream",time,".json")
+    filterStream(file.name = file, timeout = 60, follow = ids, oauth = my_oauth)}
+```
+
+## Data Preparation
+
+```{r eval=FALSE}
+# set to where the data is
+dir <- "./data/stream"
+files <- list.files(dir)
+
+# find the user-stats file
+user <- read_csv("./user-stats.csv")
+col <- c("screenName", "LABEL")
+ids <- user[,col]
+
+# initialize first time
+tweets <- tweets[0,]
+
+start.time <- Sys.time()
+for (i in files){
+  t <- parseTweets(paste0(dir,i), simplify = TRUE)
+  t <- merge(t, ids, by.x = "screen_name", by.y = "screenName")
+  tweets <- rbind(tweets, t)
+}
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
+
+## 1 - 989 ( "stream20170529123230.json")
+## total 3,766,539; 51,345 parsed
+
+## 990 - 2217
+## total 4,866,263; 113,744 parsed
+```
+
+### Save file
+
+```{r eval=FALSE}
+tweets$created_at <- parse_datetime(substr(tweets$created_at,5,100), 
+                                    format = "%b %d %H:%M:%S %z %Y")
+tweets$user_created_at <- parse_datetime(substr(tweets$user_created_at,5,100), 
+                                         format = "%b %d %H:%M:%S %z %Y")
+
+max(tweets$created_at)
+# "2017-06-07 04:06:01 UTC"
+min(tweets$created_at)
+# "2017-05-22 20:22:07 UTC"
+
+library(lubridate)
+
+# set cutoff days
+date1 <- as.POSIXct("2017-05-23 00:00:00")
+date2 <- as.POSIXct("2017-06-06 00:00:00")
+int <- interval(date1, date2)
+
+df <- tweets[tweets$created_at %within% int,]
+
+write_csv(df, "./data/full-tweets-14days.csv")
+```

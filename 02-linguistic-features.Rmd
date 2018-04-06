@@ -1,0 +1,640 @@
+---
+title: "Predicting Fake News with Linguistic Markers"
+date: "September 15, 2017"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+## Overview
+
+This notebook uses supervised machine learning (CART and Random Forest) to predict Fake vs Real News media outlets on a Twitter **user-level**.
+
+Our dataset includes 83 Twitter profiles: 31 real news and 52 fake news accounts.
+
+There are 34 features from five dictionary/sources:
+
+1.  [Moral Foundations](http://moralfoundations.org): 11 features
+  
+    * Five foundations (with two levels: virtue/vice): care/harm, fairness/cheating, loyalty/betrayal, authority/subversion, sanctity/degradation.
+  
+    * Also includes one "general" moral foundations category.
+
+2.  [Biased Language](https://www.cs.cornell.edu/~cristian/Biased_language.html) [zip](http://zissou.infosci.cornell.edu//data/npov/bias-lexicon.zip): 6 features
+
+    * Bias, hedges, implicatives, factives, assertives, and reports.
+
+    * Marta Recasens, Cristian Danescu-Niculescu-Mizil, and Dan Jurafsky. 2013. Linguistic Models for Analyzing and Detecting Biased Language. Proceedings of ACL 2013.
+
+    * Built from Wikipedia "bias" deletions to identify "framing" and "epistemological" biases
+  
+3.  [Subjective](http://mpqa.cs.pitt.edu/lexicons/subj_lexicon/): 8 features (strong, weak, each with positive/negative/neural)
+
+    * Theresa Wilson, Janyce Wiebe, and Paul Hoffmann (2005). [Recognizing Contextual Polarity in Phrase-Level Sentiment Analysis](http://people.cs.pitt.edu/~wiebe/pubs/papers/emnlp05polarity.pdf). Proc. of HLT-EMNLP-2005.
+  
+4.  Emotions: 6 features
+
+    * Anger, Disgush, Fear, Joy, Sadness, Surprise 
+    
+    * Volkova (2015)
+
+5.  Positive/Negative/Neutral: 3 features
+
+    * Volkova (2015)
+    
+For the 34 features, each feature is either normalized by the number of tweets (`t[variable_name]`) or the number of users' words (`n[variable_name]`). This yields 70 total features.
+  
+## Read in the dataset
+
+```{r data}
+library(tidyverse)
+
+tweets <- read_csv("./data/moral_foundations.csv")
+```
+
+## Simple stats
+
+Recall how many tweets by category.
+
+```{r}
+tweets %>% 
+  group_by(LABEL) %>% 
+  summarise(Count=n())
+```
+
+Let's group tweets by real vs fake.
+
+```{r}
+tweets$type <- 0
+
+tweets$type[tweets$LABEL != "realnews"] <- 1
+
+table(tweets$type)
+```
+
+### Build user level dataset
+
+```{r warning=FALSE}
+tweets$word.count <- quanteda::ntoken(tweets$modified_tweets)
+
+user <- tweets %>% group_by(LABEL, screen_name, type) %>% 
+  summarise(count = n(),
+            words = sum(word.count),
+            HarmVirtue = sum(HarmVirtue),
+            HarmVice = sum(HarmVice),
+            FairnessVirtue = sum(FairnessVirtue),
+            FairnessVice = sum(FairnessVice),
+            IngroupVirtue = sum(IngroupVirtue),
+            IngroupVice = sum(IngroupVice),
+            AuthorityVirtue = sum(AuthorityVirtue),
+            AuthorityVice = sum(AuthorityVice),
+            PurityVirtue = sum(PurityVirtue),
+            PurityVice = sum(PurityVice),
+            MoralityGeneral = sum(MoralityGeneral)) %>%
+  mutate(nHarmVirtue = HarmVirtue / words,
+         nHarmVice = HarmVice / words,
+         nFairnessVirtue = FairnessVirtue / words,
+         nFairnessVice = FairnessVice / words,
+         nIngroupVirtue = IngroupVirtue / words,
+         nIngroupVice = IngroupVice / words,
+         nAuthorityVirtue = AuthorityVirtue / words,
+         nAuthorityVice = AuthorityVice / words,
+         nPurityVirtue = PurityVirtue / words,
+         nPurityVice = PurityVice / words,
+         nMoralityGeneral = MoralityGeneral / words,
+         tHarmVirtue = HarmVirtue / count,
+         tHarmVice = HarmVice / count,
+         tFairnessVirtue = FairnessVirtue / count,
+         tFairnessVice = FairnessVice / count,
+         tIngroupVirtue = IngroupVirtue / count,
+         tIngroupVice = IngroupVice / count,
+         tAuthorityVirtue = AuthorityVirtue / count,
+         tAuthorityVice = AuthorityVice / count,
+         tPurityVirtue = PurityVirtue / count,
+         tPurityVice = PurityVice / count,
+         tMoralityGeneral = MoralityGeneral / count)
+
+ggplot(user, aes(x = count, fill = as.factor(type))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Tweets") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type")
+```
+
+Let's include the sentiment scores...
+
+```{r}
+sentiment <- read_csv("./data/sentiment-scores.csv")
+
+user <- merge(user, sentiment, by = "screen_name")
+
+user <- user %>%
+    mutate(nAnger = anger / words,
+         nDisgust = disgust / words,
+         nFear = fear / words,
+         nJoy = joy / words,
+         nSadness = sadness / words,
+         nSurprise = surprise / words,
+         nPolarity = `polarity values` / words,
+         nNegative = negative / words,
+         nNeutral = neutral / words,
+         nPositive = positive / words,
+         tAnger = anger / count,
+         tDisgust = disgust / count,
+         tFear = fear / count,
+         tJoy = joy / count,
+         tSadness = sadness / count,
+         tSurprise = surprise / count,
+         tPolarity = `polarity values` / count,
+         tNegative = negative / count,
+         tNeutral = neutral / count,
+         tPositive = positive / count)
+```
+
+Bias scores...
+
+```{r}
+bias <- read_csv("./data/bias.csv")
+
+user <- merge(user, bias, by = "screen_name")
+
+user <- user %>%
+    mutate(nBias = bias / words,
+         tBias = bias / count,
+         nAssertives = assertive_score / words,
+         tAssertives = assertive_score / count,
+         nFactives = factives_score / words,
+         tFactives = factives_score / count,
+         nHedges = hedges_score / words,
+         tHedges = hedges_score / count,
+         nImplicatives = implicatives_score / words,
+         tImplicatives = implicatives_score / count,
+         nReport = report_score / words,
+         tReport = report_score / count)
+
+```
+
+and subjectivity scores...
+
+```{r}
+subjective <- read_csv("./data/subjective_aggregation.csv")
+
+user <- merge(user, subjective, by = "screen_name")
+
+user <- user %>%
+    mutate(nStrongPositive = strong_positive / words,
+         tStrongPositive = strong_positive / count,
+         nStrongNegative = strong_negative / words,
+         tStrongNegative = strong_negative / count,
+         nStrongNeutral = strong_neutral / words,
+         tStrongNeutral = strong_neutral / count,
+         nStrongSubjective = (strong_neutral + strong_positive + strong_negative) / words,
+         tStrongSubjective = (strong_neutral + strong_positive + strong_negative) / count,
+         nWeakPositive = weak_positive / words,
+         tWeakPositive = weak_positive / count,
+         nWeakNegative = weak_negative / words,
+         tWeakNegative = weak_negative / count,
+         nWeakNeutral = weak_neutral / words,
+         tWeakNeutral = weak_neutral / count,
+         nWeakSubjective = (weak_neutral + weak_positive + weak_negative) / words,
+         tWeakSubjective = (weak_neutral + weak_positive + weak_negative) / count)
+
+```
+
+### Data Reduction & Partition
+
+First, create the label.
+
+```{r}
+# Real News = 0
+user$y <- 0
+
+# Fake News = 1
+user$y[user$LABEL != "realnews"] <- 1
+
+user$yLabel <- ifelse(user$y==1,"Fake News","Real News")
+```
+
+```{r}
+table(user$LABEL, user$yLabel)
+```
+
+```{r}
+dataset <- user[,c(17:38,49:68,75:86,93:110)]
+
+set.seed(123) # need to use for replication
+inTrain = caret::createDataPartition(dataset$y, p = 0.7, list = FALSE)
+
+dfTrain=dataset[inTrain,]
+dfTest=dataset[-inTrain,]
+```
+
+### Correlation Analysis
+
+First, plot the normalized by tweets variables...
+
+```{r fig.height=6}
+# choose only tweet normalized terms
+t <- colnames(dfTrain)[grep("^t",colnames(dfTrain))]
+
+corr <- cor(dfTrain[,c(t,"y")]) # exclude predictor
+corrplot::corrplot(corr, tl.cex = 0.6)
+```
+
+Show variable correlation plot.
+
+```{r}
+p <-  cor(dataset[,t],dataset$y)
+p <- data.frame(corr = p, row.names = row.names(p))
+p <- p %>% arrange(corr)
+
+barplot(p$corr, horiz = TRUE, las = 1, main = "Variable Correlation")
+```
+
+Positive: Negative, Fear, and Polarity (per words)
+
+Negative: Bias (words and tweets), and the Fairness Virtue and InGroup Virtue (both per words and tweets)
+
+### Top Factors Exploratory Analysis
+
+Let's briefly explore the top factors.
+
+First, let's consider the Bias dictionary.
+
+```{r}
+ggplot(dfTrain, aes(x = nBias, fill = as.factor(yLabel))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Percent of User's Words in Bias Dictionary") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type")
+```
+
+and on a per tweet bias...
+
+```{r}
+ggplot(dfTrain, aes(x = tBias, fill = as.factor(yLabel))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Avg Bias Lexicon Words per Tweet") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type")
+```
+
+Fairness Virtue as a percent of words...
+
+```{r}
+ggplot(dfTrain, aes(x = nFairnessVirtue, fill = as.factor(yLabel))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Percent of User's Words in Fairness (Virtue) Dictionary") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type")
+```
+
+or the Fear per tweet level...
+
+```{r}
+ggplot(dfTrain, aes(x = nFear, fill = as.factor(yLabel))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Percent of User's Words in Fear Dictionary") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type")
+```
+
+or Joy (per tweet)...
+
+```{r}
+ggplot(dfTrain, aes(x = tJoy, fill = as.factor(yLabel))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Percent of User's Words in Joy Dictionary") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type")
+```
+
+### Decision Tree
+
+```{r}
+#install.packages("rpart")
+library(rpart); library(rpart.plot); library(caret)
+```
+
+First, let's use 5-fold CV to tune the model's cp parameter.
+
+```{r}
+tc <- trainControl("cv",5)
+rpart.grid <- expand.grid(.cp=c(0.01,0.02,0.05,0.1,0.2))
+
+(train.rpart <- train(as.factor(y) ~., data=dfTrain[,-72], method="rpart", trControl=tc , tuneGrid=rpart.grid))
+```
+
+Let's run the model and plot the results
+
+```{r}
+fit <- rpart(as.factor(y) ~ ., data=dfTrain[,-72], method = "class", control = rpart.control(cp = train.rpart$bestTune$cp))
+
+rpart.plot(fit)
+```
+
+We can show variable importance...
+
+```{r}
+vi <- fit$variable.importance
+
+par(mar=c(3,10,5,0))
+barplot(vi[order(vi)], main = "Variable Importance", horiz = TRUE, las=1, offset = 1)
+```
+
+Let's run accuracy, precision, and recall.
+
+```{r}
+yTrain <- predict(fit, type = "class")
+
+table(yTrain, dfTrain$y)
+tab <- table(yTrain, dfTrain$y)
+
+print(paste0("Accuracy is ",(tab[1,1]+tab[2,2])/sum(tab)))
+print(paste0("Precision is ",(tab[2,2])/sum(tab[2,])), digits = 3)
+print(paste0("Recall is ",(tab[2,2])/sum(tab[,2])), digits = 3)
+```
+
+What were the incorrect users?
+
+```{r}
+names <- user[inTrain,c("screen_name","LABEL")]
+names[(yTrain != dfTrain$y),]
+```
+
+Let's predict for the holdout.
+
+```{r}
+yTest <- predict(fit, newdata = dfTest, type = "class")
+
+table(yTest, dfTest$y)
+
+tab <- table(yTest, dfTest$y)
+
+print(paste0("Accuracy is ",(tab[1,1]+tab[2,2])/sum(tab)))
+print(paste0("Precision is ",(tab[2,2])/sum(tab[2,])), digits = 3)
+print(paste0("Recall is ",(tab[2,2])/sum(tab[,2])), digits = 3)
+```
+
+What were the incorrect predicted for the out-of-sample?
+
+```{r}
+names <- user[-inTrain,c("screen_name","LABEL")]
+names[(yTest != dfTest$y),]
+```
+
+### Random Forests
+
+```{r}
+library(randomForest)
+
+fit <- randomForest(as.factor(y) ~ ., data=dfTrain[,-72], ntree = 1000, importance=TRUE)
+
+print(fit) # view results
+```
+
+Mis-classification rates per trees.
+
+```{r}
+plot(fit, main = "Misclassification Rates")
+```
+
+Variable Importance
+
+```{r fig.height=6, fig.width=8}
+VarImportance <- varImpPlot(fit, main = "Variable Importance", n.var = 20)
+```
+
+Predict out-of-sample
+
+```{r}
+yTest <- predict(fit, newdata = dfTest, type = "class")
+
+table(yTest, dfTest$y)
+
+tab <- table(yTest, dfTest$y)
+
+print(paste0("Accuracy is ",(tab[1,1]+tab[2,2])/sum(tab)))
+print(paste0("Precision is ",(tab[2,2])/sum(tab[2,])), digits = 3)
+print(paste0("Recall is ",(tab[2,2])/sum(tab[,2])), digits = 3)
+
+names <- user[-inTrain,c("screen_name","LABEL")]
+names[(yTest != dfTest$y),]
+```
+
+### Rerun without Extra Biased Dictionaries
+
+As we found in the exploratory analysis, many of the Biased Language dimensions are highly correlated. To address this, we removed the report, hedges, and assertives dicionaries as much of the information is self-contained in other Biased Language dimensions
+
+```{r fig.height=6, fig.width=8}
+# remove Report, Hedges and Assertives
+excludes <- c(-45,-46,-49,-50,-53,-54,-72)
+
+set.seed(1234)
+
+fit <- randomForest(as.factor(y) ~ ., 
+                    data=dfTrain[,c(-45,-46,-49,-50,-53,-54,-72)], 
+                    ntree = 1000, 
+                    importance=TRUE)
+
+VarImportance <- varImpPlot(fit, main = "Variable Importance", n.var = 20)
+yTest <- predict(fit, newdata = dfTest[,excludes], type = "class")
+
+table(yTest, dfTest$y)
+```
+
+```{r}
+codeDict <- function(var){
+  case_when(
+    var %in% c("tBias","nBias","tImplicatives","nImplicatives","nFactives","tFactives") ~ "Bias Language",
+    var %in% c("nFairnessVirture","tFairnessVirtue","tIngroupVice","nIngroupVirtue","tAuthorityVice","tIngroupVirtue", "nFairnessVirtue") ~ "Moral Foundations",
+    var %in% c("tWeakPositive","tStrongPositive","nWeakPositive","tWeakNeutral","nStrongPositive","nWeakNeutral") ~ "Subjectivity",
+    var %in% c("tJoy","nAnger","nFear","nJoy") ~ "Emotions",
+    var %in% c("nNegative","tPositive","nPositive","tNegative") ~ "Sentiment"
+  )
+}
+
+VarImportance <- as.tibble(VarImportance) %>%
+  mutate(fieldName = row.names(VarImportance),
+          group = codeDict(fieldName)) %>%
+  arrange(desc(MeanDecreaseAccuracy)) 
+```
+
+```{r fig.height=4}
+selected <- c("tBias","nFairnessVirtue","tWeakPositive","tStrongPositive","tWeakNeutral","nFear","tLoyaltyVirtue","nAnger","nNegative")
+
+VarImportance$fieldName[VarImportance$fieldName == "tIngroupVirtue"] <- "tLoyaltyVirtue"
+VarImportance$fieldName[VarImportance$fieldName == "tIngroupVice"] <- "tLoyaltyVice"
+
+filter(VarImportance, MeanDecreaseAccuracy > 4.5) %>%
+  ggplot(aes(x = forcats::fct_reorder(fieldName, MeanDecreaseAccuracy, .desc = FALSE), 
+           y = MeanDecreaseAccuracy, 
+           fill = group,
+           color = ifelse(!(fieldName %in% selected), "Not Selected", "Selected"),
+           width=.75)) +
+  geom_col() +
+  coord_flip() +
+  labs(y = "Mean Decrease in Accuracy after Removing Feature",
+       x = "Language Feature",
+       fill = "Language Group") +
+  scale_fill_hue(l=80, c=50) +
+  theme(legend.position = c(0.8,0.3)) +
+  scale_color_manual(values = c('grey','black'), guide = FALSE)
+```
+
+After removing the redundant features, we find a better out-of-sample performance (now 100%).
+
+### Normalize Factors
+
+Let's normalize the six most predictive factors.
+
+```{r}
+normalize <- function(x){
+  #https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range
+  norm.value <- (x - min(x)) / (max(x) - min(x))
+  return(norm.value)
+}
+
+norm.df <- data.frame(screen_name = user$screen_name,
+                      label = user$yLabel,
+                      Bias = normalize(dataset$tBias),
+                      Fairness = normalize(dataset$nFairnessVirtue),
+                      Loyalty = normalize(dataset$tIngroupVirtue),
+                      WeakSubjective = normalize(dataset$tWeakSubjective),
+                      StrongSubjective = normalize(dataset$tStrongSubjective),
+                      Positive = normalize(dataset$nPositive),
+                      Negative = normalize(dataset$nNegative),
+                      Fear = normalize(dataset$nFear),
+                      Anger = normalize(dataset$nAnger)
+                      )
+
+```
+
+These values will be used in the interface.
+
+Next, we want to explore the distributions (density plots) of the dimensions separated by fake and real news accounts.
+
+```{r, include=FALSE}
+#http://www.cookbook-r.com/Graphs/Multiple_graphs_on_one_page_(ggplot2)/
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+```{r}
+p1 <- ggplot(norm.df, aes(x = Bias, fill = as.factor(label))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Normalized Bias") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type") + 
+  theme(legend.position="none")
+
+p2 <- ggplot(norm.df, aes(x = Fairness, fill = as.factor(label))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Normalized Fairness") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type") + 
+  theme(legend.position="none")
+
+p3 <- ggplot(norm.df, aes(x = Loyalty, fill = as.factor(label))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Normalized Loyalty") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type") + 
+  theme(legend.position="none")
+
+p4 <- ggplot(norm.df, aes(x = WeakSubjective, fill = as.factor(label))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Normalized Weak Subjective") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type") + 
+  theme(legend.position="none")
+
+p5 <- ggplot(norm.df, aes(x = StrongSubjective, fill = as.factor(label))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Normalized Strong Subjective") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type") + 
+  theme(legend.position="none")
+
+p6 <- ggplot(norm.df, aes(x = Positive, fill = as.factor(label))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Normalized Positive") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type") + 
+  theme(legend.position=c(0.7,0.75))
+
+p7 <- ggplot(norm.df, aes(x = Negative, fill = as.factor(label))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Normalized Negative") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type") + 
+  theme(legend.position="none")
+
+p8 <- ggplot(norm.df, aes(x = Fear, fill = as.factor(label))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Normalized Fear") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type") + 
+  theme(legend.position="none")
+
+p9 <- ggplot(norm.df, aes(x = Anger, fill = as.factor(label))) +
+  geom_density(adjust = 0.8, alpha=0.3) +
+  xlab("Normalized Anger") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Account Type") + 
+  theme(legend.position="none")
+
+multiplot(p1, p4, p7, p2, p5, p8, p3, p6, p9, cols=3)
+```
+
+Alternatively, we can select only two dimensions (e.g., Bias and Fairness), and see that these two features can linearly separate the data by Real (blue) and Fake (red) accounts. 
+
+```{r fig.height=6}
+p <- ggplot(norm.df, aes(x = Bias, y = Fairness, color = label, text = screen_name)) +
+  geom_point() + 
+  theme(legend.position="none") 
+
+plotly::ggplotly(p)
+```
+
+## Session Info
+
+```{r}
+sessionInfo()
+```
+

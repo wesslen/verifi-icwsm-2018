@@ -1,0 +1,339 @@
+---
+title: "Responses Analysis"
+author: "Ryan Wesslen"
+date: "July 20, 2017"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+## Load & Pre-processing
+
+### Read in the File
+
+```{r}
+#install.packages("tidyverse")
+library(tidyverse)
+
+responses <- read_csv("./data/userForms.csv")
+
+table(responses$fairnessRadios)
+
+# rename columns -- should be a better way
+names <- colnames(responses) 
+names[14:18] <- c("accountsImportance", 
+                  "networkImportance", 
+                  "tweetsImportance",
+                  "geoImportance", 
+                  "entityImportance")
+colnames(responses) <- names
+```
+
+Let's see how many responses by user.
+
+```{r}
+table(responses$user_id)
+
+responses$user_id <- toupper(responses$user_id)
+```
+
+Let's now remove the test accounts.
+
+```{r}
+excludeRows <- grep("TEST", responses$user_id)
+responses <- responses[-excludeRows,]
+```
+
+Also notice that some users have > 8 responses. These are cases when they responded twice.
+
+Let's identify then drop them.
+
+```{r}
+# order by user, account, then time string (note descending so 1 = last, 2 = 2nd last, ...)
+responses <- responses[order(responses$user_id, 
+                             responses$account_id, 
+                             desc(responses$currentTimeString)),]
+
+# create user-account key
+responses$responseKey <- paste0(responses$user_id,"+",responses$account_id)
+
+# create count
+responses$order <- sequence(rle(responses$responseKey)$lengths)
+
+# remove duplicates
+responses <- filter(responses, order == 1)
+```
+
+FYI CC-17 only reported for 7.
+
+### Reformat Columns
+
+Create a new column that says the truth based on a mapping table.
+
+```{r}
+vlookup <- function(this, data, key, value){
+  m <- match(this, data[[key]])
+  data[[value]][m]
+}
+
+map <- tibble(account_id = c("04","39","59","83","02","48","56","71"), 
+              truth = c("fake","fake","fake","fake","real","real","real","real"),
+              accountName = c("@AddInfoOrg","@NatCounterPunch","@SGTreport","@zerohedge",
+                                  "@ABC","@nytimes","@Reuters","@TIME"))
+
+responses <- responses %>%
+              mutate(truth = vlookup(account_id, map, "account_id", "truth"),
+                     accountName = vlookup(account_id, map, "account_id", "accountName" ),
+                     group = case_when(
+                       substr(user_id,1,2)=="CC" ~ "Control",
+                       substr(user_id,1,2)=="TC" ~ "Confirm",
+                       TRUE ~ "Disconfirm"
+                     ),
+                     accuracy = ifelse(verifyRadios==truth,1L,0L),
+                     fake = ifelse(verifyRadios=="fake",1L,0L))
+```
+
+### Regression
+
+```{r}
+accuracy <- mean(as.integer(responses$accuracy))
+responses$accuracy <- as.factor(responses$accuracy)
+
+recoded <- function(var){
+  case_when(
+    var == -1 ~ 0,
+    var == 0 ~ -1,
+    var == 1 ~ 1
+  )
+}
+
+# recoding responses so -1 = No, 0 = n/a, and 1 = Yes
+responses$socialRadios <- recoded(responses$socialRadios)
+responses$tweetRateRadios <- recoded(responses$tweetRateRadios)
+responses$fairnessRadios <- recoded(responses$fairnessRadios)
+responses$entityRadios <- recoded(responses$entityRadios)
+responses$fearRadios <- recoded(responses$fearRadios)
+responses$opiniatedRadios <- recoded(responses$opiniatedRadios)
+
+# social network, bias/fairness, fear/negative => point to real
+# tweet rate, entity, opininated => point to fake
+
+realCue <- function(var, actual){
+  case_when(
+    var == 1 & actual == "real" ~ 1L,
+    var == 1 & actual == "fake" ~ -1L,
+    var == -1 & actual == "real" ~ -1L,
+    var == -1 & actual == "fake" ~ 1L,
+    var == 0 ~ 0L
+  )
+}
+
+fakeCue <- function(var, actual){
+  case_when(
+    var == 1 & actual == "real" ~ 1L,
+    var == 1 & actual == "fake" ~ 1L,
+    var == -1 & actual == "real" ~ 1L,
+    var == -1 & actual == "fake" ~ -1L,
+    var == 0 ~ 0L
+  )
+}
+
+responses <- responses %>%
+  mutate(socialRadios2 = realCue(socialRadios, truth),
+         tweetRateRadios2 = fakeCue(tweetRateRadios, truth),
+         fairnessRadios2 = realCue(fairnessRadios, truth),
+         entityRadios2 = fakeCue(entityRadios, truth),
+         fearRadios2 = realCue(fearRadios, truth),
+         opiniatedRadios2 = fakeCue(opiniatedRadios, truth))
+```
+
+### Accuracy Dependent Variable
+
+```{r}
+form <- "accuracy ~ socialRadios2 + tweetRateRadios2 + fairnessRadios2 + entityRadios2 + fearRadios2 + opiniatedRadios2"
+
+fit <- glm(form, 
+           data = responses, 
+           family = "binomial")
+
+summary(fit)
+
+exp(cbind(OR = coef(fit), confint(fit)))
+
+pred1 <- predict(fit, type= "response") > accuracy
+
+table(pred1, responses$accuracy)
+```
+
+```{r}
+# form 2: cue ratings + account name
+responses$accountName <- as.factor(responses$accountName)
+form2 <- paste(form, "+ accountName")
+
+fit2 <- glm(form2, 
+           data = responses, 
+           family = "binomial")
+
+summary(fit2)
+
+exp(cbind(OR = coef(fit2), confint(fit2)))
+
+pred2 <- predict(fit2, type= "response") > accuracy 
+
+table(pred2, responses$accuracy)
+```
+
+#### form 3: cue ratings + account name + confidence
+
+```{r}
+form3 <- paste(form2,"+ confidence")
+
+fit3 <- glm(form3,
+            data = responses,
+            family = "binomial")
+
+summary(fit3)
+
+exp(cbind(OR = coef(fit3), confint(fit3)))
+
+pred3 <- predict(fit3, type= "response") > accuracy 
+
+table(pred3, responses$accuracy)
+```
+
+#### Form 4: Treatment Groups
+
+```{r}
+responses$group <- factor(responses$group, levels = c("Control","Confirm","Disconfirm"))
+
+form4 <- paste(form3, "+ group")
+
+fit4 <- glm(form4,
+            data = responses,
+            family = "binomial")
+
+summary(fit4)
+
+exp(cbind(OR = coef(fit4), confint(fit4)))
+
+pred4 <- predict(fit4, type= "response") > accuracy 
+
+table(pred4, responses$accuracy)
+```
+
+### Fake Dependent Variable
+
+```{r}
+# form 5: cue ratings
+responses$fake <- as.factor(responses$fake)
+
+form5 <- "fake ~ socialRadios2 + tweetRateRadios2 + fairnessRadios2 + entityRadios2 + fearRadios2 + opiniatedRadios2"
+
+fit5 <- glm(form5, 
+           data = responses, 
+           family = "binomial")
+
+summary(fit5)
+
+exp(cbind(OR = coef(fit5), confint(fit5)))
+
+pred5 <- predict(fit5, type= "response") > accuracy
+
+table(pred5, responses$fake)
+
+# form 2: cue ratings + account name
+responses$accountName <- as.factor(responses$accountName)
+form6 <- paste(form5, "+ accountName")
+
+fit6 <- glm(form6, 
+            data = responses, 
+            family = "binomial")
+
+summary(fit6)
+
+exp(cbind(OR = coef(fit6), confint(fit6)))
+
+pred6 <- predict(fit6, type= "response") > accuracy 
+
+table(pred6, responses$accuracy)
+
+# form 3: cue ratings + account name + confidence
+
+form7 <- paste(form6,"+ confidence")
+
+fit7 <- glm(form7,
+            data = responses,
+            family = "binomial")
+
+summary(fit7)
+
+exp(cbind(OR = coef(fit7), confint(fit7)))
+
+pred7 <- predict(fit7, type= "response") > accuracy 
+
+table(pred7, responses$fake)
+
+# form 4: 
+
+responses$group <- factor(responses$group, levels = c("Control","Confirm","Disconfirm"))
+
+form8 <- paste(form7, "+ group")
+
+fit8 <- glm(form8,
+            data = responses,
+            family = "binomial")
+
+summary(fit8)
+
+exp(cbind(OR = coef(fit8), confint(fit8)))
+
+pred8 <- predict(fit8, type= "response") > accuracy 
+
+table(pred8, responses$fake)
+```
+
+### Export output to CSV
+
+
+```{r}
+df1 <- as.tibble(exp(cbind(OR = coef(fit4), confint(fit4))))
+df2 <- as.tibble(exp(cbind(OR = coef(fit8), confint(fit8))))
+
+dfA <- tibble(Name = rownames(exp(cbind(OR = coef(fit4), confint(fit4)))),
+              Accuracy = df1$OR,
+              Veracity = df2$OR,
+              AccL = df1$`2.5 %`,
+              AccU = df1$`97.5 %`,
+              VerL = df2$`2.5 %`,
+              VerU = df2$`97.5 %`)
+
+dfA <- dfA %>% mutate_each(funs(round(.,2)), -Name) 
+
+write_csv(dfA, "./data/dfA.csv")
+
+df3 <- as.tibble(exp(cbind(OR = coef(fit), confint(fit))))
+df4 <- as.tibble(exp(cbind(OR = coef(fit5), confint(fit5))))
+
+# big
+
+dfB <- tibble(Name = rownames(exp(cbind(OR = coef(fit), confint(fit)))),
+              Accuracy = df3$OR,
+              Veracity = df4$OR,
+              AccL = df3$`2.5 %`,
+              AccU = df3$`97.5 %`,
+              VerL = df4$`2.5 %`,
+              VerU = df4$`97.5 %`)
+
+dfB <- dfB %>% mutate_each(funs(round(.,2)), -Name) 
+
+write_csv(dfB, "./data/dfB.csv")
+```
+
+## Session Info
+
+```{r}
+sessionInfo()
+```
+
