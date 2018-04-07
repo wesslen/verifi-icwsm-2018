@@ -13,6 +13,10 @@ Open the file verifi-icwsm-2018.Rproj.
 2) Random Forest Model on Language Feature Selection ([Rmd](./02-linguistic-features.Rmd) / [HTML](https://htmlpreview.github.io/?https://github.com/wesslen/verifi-icwsm-2018/blob/master/02-linguistic-features.html))
 3) Logistic Regression: Accuracy and Fake Decisions ([Rmd](./03-logistic-regression.Rmd) / [HTML](https://htmlpreview.github.io/?https://github.com/wesslen/verifi-icwsm-2018/blob/master/03-logistic-regression.html))
 
+## Study
+
+The in-laboratory study was approved by UNC Charlotte Internal Review Board (uncc-irb@uncc.edu), IRB #17-0251.
+
 ## Data
 
 | format | Description            |
