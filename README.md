@@ -14,14 +14,13 @@ This repo contains 3 codes:
 2) Random Forest Model on Language Feature Selection ([Rmd](./02-linguistic-features.Rmd) / [HTML](https://htmlpreview.github.io/?https://github.com/wesslen/verifi-icwsm-2018/blob/master/02-linguistic-features.html))
 3) Logistic Regression: Accuracy and Fake Decisions ([Rmd](./03-logistic-regression.Rmd) / [HTML](https://htmlpreview.github.io/?https://github.com/wesslen/verifi-icwsm-2018/blob/master/03-logistic-regression.html))
 
-## Data 
-
-### Data
+## Data
 
 | format | Description            |
 | ------ | ---------------------- |
 | csv    | [User Interaction Logs](./data/userLogs.csv) |
 | csv    | [User Responses (Decisions)](./data/userForms.csv) |
+| csv    | [Pre-questionnaire](./data/pretest.csv) |
 
 All user-level data are anonymized. Use user-id for matching.
 
