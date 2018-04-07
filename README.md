@@ -26,4 +26,10 @@ All user-level data are anonymized. Use user-id for matching.
 
 ## Figures
 
+![Verifi Interface](./img/VerifiInterfaceWithLabel.png)
 
+![Interface Language Features](./img/language-features.png)
+
+![Study Demographics](./img/demographics.jpg)
+
+![Decision Accounts Truth Table](./img/truthTable2.pdf)
