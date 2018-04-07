@@ -40,6 +40,3 @@ All user-level data are anonymized. Use user-id for matching.
 
 ![Study Demographics](./img/demographics.jpg)
 
-#### Study Decision Accounts Truth Table
-
-![Decision Accounts Truth Table](./img/truthTable2.pdf)
