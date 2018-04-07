@@ -1,8 +1,0 @@
-Name,Accuracy,Veracity,AccL,AccU,VerL,VerU
-(Intercept),1.24,1.04,0.9,1.72,0.77,1.39
-socialRadios2,2.37,0.9,1.88,3.02,0.74,1.09
-tweetRateRadios2,0.92,0.81,0.64,1.31,0.58,1.12
-fairnessRadios2,1.5,0.81,1.19,1.89,0.66,0.99
-entityRadios2,1.16,1.14,0.83,1.6,0.85,1.53
-fearRadios2,1.4,0.69,1.12,1.76,0.56,0.85
-opiniatedRadios2,1.97,1.78,1.44,2.72,1.32,2.41
