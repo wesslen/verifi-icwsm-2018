@@ -1,6 +1,6 @@
 ## Paper
 
-Karduni, A., Wesslen, R., Santhanam, S., Cho, I., Shaikh, S., and Dou W. (2018). Can You Verifi This? Studying Uncertainty and Decision-Making about  Misinformation in Visual Analytics. ICWSM 2018.
+Karduni, A., Wesslen, R., Santhanam, S., Cho, I., Volkova, S., Arendt, D., Shaikh, S., and Dou W. (2018). Can You Verifi This? Studying Uncertainty and Decision-Making about  Misinformation in Visual Analytics. ICWSM 2018.
 
 
 ## Instructions to run
