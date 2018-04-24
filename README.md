@@ -55,7 +55,9 @@ When accessing the heroku app, Google Chrome is highly recommended. You may need
 
 ### Language Features
 
-![Interface Language Features](./img/language-features.png){width=60%}
+<div style="width:400px">
+![Interface Language Features](./img/language-features.png)
+</div>
 
 Top 20 most predictive language features of Fake and Real news outlets as measured by each feature’s average  effect  on  Accuracy.  ‘t’  prefix  indicates  the  feature  is normalized by the account’s tweet count and ‘n’ indicates normalization by the account’s word count (summed across all tweets). Features with borders are included in Verifi.
 
@@ -63,7 +65,9 @@ Top 20 most predictive language features of Fake and Real news outlets as measur
 
 #### Accounts Selected for User Decisions
 
-![Masked Accounts](./img/maskname.png){width=70%}
+<div style="width:400px">
+![Masked Accounts](./img/maskname.png)
+</div>
 
 Eight accounts with masked account names. Background colors indicate real (green) and fake (red). Accounts were masked as requested by one of authors' institutions. 
 
@@ -83,11 +87,11 @@ Available cues for selected accounts (column) and users' response regarding the 
 
 #### Logistic Regression to Explain User Predictions (Accuracy and Fake)
 
-![Regression](./img/regression-updated.png){width=50%}
+![Regression](./img/regression-updated.png)
 
 Log odds ratios for each independent variable in two logistic regressions. The Accuracy column is 1 = Correct, 0 = Incorrect Decision. The Fake column is the user's prediction: 1 = Fake, 0 = Real. The `@accounts` variables use `@XYZ` as the reference level and the Group variables use the Control Group as the reference level.
 
 #### Study Demographics
 
-![Study Demographics](./img/demographics.jpg){width=50%}
+![Study Demographics](./img/demographics.jpg)
 
