@@ -55,9 +55,7 @@ When accessing the heroku app, Google Chrome is highly recommended. You may need
 
 ### Language Features
 
-<div style="width:400px">
-![Interface Language Features](./img/language-features.png)
-</div>
+![Interface Language Features](./img/language-features.png =500x)
 
 Top 20 most predictive language features of Fake and Real news outlets as measured by each feature’s average  effect  on  Accuracy.  ‘t’  prefix  indicates  the  feature  is normalized by the account’s tweet count and ‘n’ indicates normalization by the account’s word count (summed across all tweets). Features with borders are included in Verifi.
 
@@ -65,9 +63,7 @@ Top 20 most predictive language features of Fake and Real news outlets as measur
 
 #### Accounts Selected for User Decisions
 
-<div style="width:400px">
-![Masked Accounts](./img/maskname.png)
-</div>
+![Masked Accounts](./img/maskname.png =500x)
 
 Eight accounts with masked account names. Background colors indicate real (green) and fake (red). Accounts were masked as requested by one of authors' institutions. 
 
