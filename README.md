@@ -89,4 +89,4 @@ Log odds ratios for each independent variable in two logistic regressions. The A
 
 #### Study Demographics
 
-<img src="img/demographics.png" width="500">
+<img src="img/demographics.jpg" width="500">
