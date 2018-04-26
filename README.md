@@ -21,7 +21,7 @@ The code to analyze the study is written in R 3.4.3 or higher. Highly recommend 
 Open the file verifi-icwsm-2018.Rproj.
 
 1) R-stream-code: Twitter Streaming API Code to pull the original data ([Rmd](./01-public-api.Rmd) / [HTML](https://htmlpreview.github.io/?https://github.com/wesslen/verifi-icwsm-2018/blob/master/01-public-api.html))
-2) Random Forest Model on Language Feature Selection ([Rmd](./02-linguistic-features.Rmd) / [HTML](https://htmlpreview.github.io/?https://github.com/wesslen/verifi-icwsm-2018/blob/master/02-linguistic-features.html))
+2) Random Forest Model on Language Feature Selection ([Rmd](./02-linguistic-features.Rmd) / [HTML](https://cdn.rawgit.com/wesslen/verifi-icwsm-2018/29edbb9b/02-linguistic-features.html))
 3) Logistic Regression: Accuracy and Fake Decisions ([Rmd](./03-logistic-regression.Rmd) / [HTML](https://htmlpreview.github.io/?https://github.com/wesslen/verifi-icwsm-2018/blob/master/03-logistic-regression.html))
 
 The code for Verifi is written in python, D3.js, Leaflet.js, and Node.js. Please email <akarduni@uncc.edu> if you are interested in the system. User interaction logs were automatically logged and stored in a local MongoDB database.
