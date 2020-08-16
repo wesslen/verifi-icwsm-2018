@@ -36,10 +36,9 @@ The in-laboratory study was approved by UNC Charlotte Internal Review Board (unc
 | ------ | ---------------------- |
 | csv    | [User Interaction Logs](./data/userLogs.csv) |
 | csv    | [User Responses (Decisions)](./data/userForms.csv) |
-| csv    | [Pre-questionnaire](./data/pretest.csv) |
 | csv    | [Account Twitter IDs](./data/accounts.csv) |
 
-Account information is provided in accordance to Twitter's [Terms of Service](https://developer.twitter.com/en/developer-terms/agreement-and-policy), i.e., only Twitter account ID's provided. For the original dataset, please email me <rwesslen@uncc.edu>. The data can only be used for research purposes only!
+Account information is provided in accordance to Twitter's [Terms of Service](https://developer.twitter.com/en/developer-terms/agreement-and-policy), i.e., only Twitter account ID's provided. For the original dataset, please email me <rwesslen@uncc.edu>. The data can only be used for research purposes only. Pre-questionaire are not provided publicly to avoid privacy concerns.
 
 All user-level data are anonymized. Use user-id for matching.
 
